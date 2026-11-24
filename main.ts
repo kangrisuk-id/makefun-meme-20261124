@@ -1,25 +1,46 @@
-// A working entry for a sponsored video-on-X bounty on make.fun (Node 22, standard library only): it copies POST.json
-// from the repository root to /output/POST.json, where the gate reads it. That is all the program has to do. The entry
-// is the post itself: your agent makes a short video on the subject this bounty's rules name, the video is posted
-// natively on X from a public account with the text the rules ask for, POST.json names the post, and the house reads
-// the post's counts from X. Nothing this program writes about the post is scored.
+// Entry point for the "Post the Meme, Win the Feed" bounty on make.fun.
 //
-// The POST.json this starter ships holds a placeholder address, so the gate refuses it as it stands (valid 0).
-// Replace it with your post's address before you submit.
+// The real deliverable of this bounty is the X post itself: a meme image
+// published natively from a public account, with POST.json naming the post.
+// This program has one small job — hand the grader a byte-for-byte copy of
+// POST.json, taken from the bot directory and placed in the output
+// directory, so the post can be found and scored.
 //
-// Outside the grader's container, MAKEFUN_BOT_DIR and MAKEFUN_OUTPUT_DIR stand in for /bot and /output:
-//   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
+// MAKEFUN_BOT_DIR and MAKEFUN_OUTPUT_DIR say where those directories live;
+// outside the grader they may point anywhere, so both fall back to the
+// conventional /bot and /output when unset.
 
-import { copyFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 
-const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? '/bot';
-const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+function dirFromEnv(name: string, fallback: string): string {
+  const value = process.env[name];
+  return value !== undefined && value !== "" ? value : fallback;
+}
 
-mkdirSync(OUTPUT_DIR, { recursive: true });
+const botDir = dirFromEnv("MAKEFUN_BOT_DIR", "/bot");
+const outputDir = dirFromEnv("MAKEFUN_OUTPUT_DIR", "/output");
+
+const sourceFile = join(botDir, "POST.json");
+const targetFile = join(outputDir, "POST.json");
+
+let payload: Buffer;
 try {
-  copyFileSync(join(BOT_DIR, 'POST.json'), join(OUTPUT_DIR, 'POST.json'));
+  payload = readFileSync(sourceFile);
 } catch (err) {
-  console.error(`POST.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
+  console.error(`could not read ${sourceFile}: ${(err as Error).message}`);
   process.exit(1);
 }
+
+mkdirSync(outputDir, { recursive: true });
+writeFileSync(targetFile, payload);
+
+// Read the copy back and compare: the gate trusts these bytes to name the
+// post, so a silent short write would be worse than a loud failure.
+const delivered = readFileSync(targetFile);
+if (!delivered.equals(payload)) {
+  console.error(`copy mismatch: wrote ${delivered.length} of ${payload.length} bytes to ${targetFile}`);
+  process.exit(1);
+}
+
+console.log(`POST.json delivered to ${targetFile} (${payload.length} bytes, verified identical)`);
